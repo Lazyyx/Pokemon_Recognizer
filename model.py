@@ -7,11 +7,14 @@ import glob
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
+from torchvision import transforms
+
 
 class CoRDataset(Dataset):
-    def __init__(self, path):
+    def __init__(self, path, transform=None):
         self.imgs_path = path
         self.class_map = {}
+        self.transform = transform
         file_list = glob.glob(self.imgs_path + "*")
         self.data=[]
         self.img =[]
@@ -19,8 +22,8 @@ class CoRDataset(Dataset):
             class_name = class_path.split("/")[-1]
             for img_path in glob.glob(class_path + "/*.jpg"):
                 self.data.append([img_path, class_name])
-                img=plt.imread(img_path)
-                img =  img/np.amax(img)
+                img = plt.imread(img_path)
+                img = img/np.amax(img)
                 R, G, B = img[::4,::4,0], img[::4,::4,1], img[::4,::4,2]
                 img = 0.2989 * R + 0.5870 * G + 0.1140 * B # On passe l'image en niveaux de gris pour que ça soit plus rapide
                 self.img.append(img)
@@ -34,6 +37,8 @@ class CoRDataset(Dataset):
         img_path, class_name = self.data[idx]
         class_id = self.class_map[class_name]
         img_tensor = torch.from_numpy(self.img[idx]).unsqueeze(0)  # Add channel dimension
+        if self.transform:
+            img_tensor = self.transform(img_tensor)
         return img_tensor.float(), class_id  # Return scalar class_id
     
 
@@ -92,7 +97,8 @@ def Learning(nepoch, model, crit, optim, batchsize, trainingloader, validationlo
                             np.round(best_tloss, 8),
                             np.round(best_vloss, 8),
                             np.round(best_accuracy, 8))
-        
+
+
 def Testmodel(modelfile,crit, testloader):
     model = torch.load(modelfile)
     model.eval()
@@ -104,9 +110,9 @@ def Testmodel(modelfile,crit, testloader):
         plt.imshow(image)
         plt.xticks([])
         plt.yticks([])
-        predicted = model(imgs.view(1,-1)) 
+        predicted = model(imgs.view(1,-1))
         test_loss = crit(predicted.squeeze(), labels.squeeze())
-        plt.title('True label : {} \n Predicted label : {} \n Test loss : {}'.format(labels.squeeze().detach().numpy(), 
+        plt.title('True label : {} \n Predicted label : {} \n Test loss : {}'.format(labels.squeeze().detach().numpy(),
                                                                        torch.squeeze(predicted).round().detach().numpy(),
                                                                                     np.round(test_loss.item(), 2)),
                   fontsize=6)
@@ -114,20 +120,28 @@ def Testmodel(modelfile,crit, testloader):
 
 
 BATCH_SIZE = 200
+transform = transforms.Compose([
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomRotation(10),
+    transforms.RandomResizedCrop(56, scale=(0.8, 1.0)),
+    transforms.Normalize((0.5,), (0.5,))
+])
 if __name__ == "__main__":
-    training_set = CoRDataset("data/training/")
+    training_set = CoRDataset("data/training/", transform=transform)
     training_loader = DataLoader(training_set, batch_size=BATCH_SIZE, shuffle=True)
     validation_set = CoRDataset("data/validation/")
     validation_loader = DataLoader(validation_set, shuffle=False)
     test_set = CoRDataset("data/test/")
     test_loader = DataLoader(test_set, shuffle=False)
-    pokemonmodel = torch.nn.Sequential(torch.nn.Linear(56 * 56, 1024),
+    pokemonmodel = torch.nn.Sequential(torch.nn.Linear(56 * 56, 512),
                                        torch.nn.ReLU(),
-                                       torch.nn.Linear(1024, 512),
+                                       torch.nn.Dropout(0.25),
+                                       torch.nn.Linear(512, 256),
                                        torch.nn.ReLU(),
-                                       torch.nn.Linear(512, len(training_set.class_map)),
+                                       torch.nn.Dropout(0.25),
+                                       torch.nn.Linear(256, len(training_set.class_map)),
                                        )
     criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(pokemonmodel.parameters(), lr=0.001, weight_decay=1e-4)
+    optimizer = torch.optim.Adam(pokemonmodel.parameters(), lr=0.001, weight_decay=10**(-3))
     Learning(100, pokemonmodel, criterion, optimizer, BATCH_SIZE, training_loader, validation_loader)
     Testmodel("best_model.pth", criterion, test_loader)
