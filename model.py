@@ -28,7 +28,7 @@ class CoRDataset(Dataset):
                 img = 0.2989 * R + 0.5870 * G + 0.1140 * B # On passe l'image en niveaux de gris pour que ça soit plus rapide
                 self.img.append(img)
             self.class_map[class_name] = i
-        self.img_dim = (56, 56)    
+        self.img_dim = (56, 56)
     
     def __len__(self):
         return len(self.data)    
@@ -105,43 +105,45 @@ def Testmodel(modelfile,crit, testloader):
     plt.figure(dpi=300)
     ct=1
     for imgs, labels in testloader:
-        image=imgs[0]
-        plt.subplot(1, len(test_loader.sampler),ct)
-        plt.imshow(image)
+        image = imgs[0]
+        plt.subplot(1, len(testloader), ct)
+        plt.imshow(image.squeeze(), cmap='gray')
         plt.xticks([])
         plt.yticks([])
-        predicted = model(imgs.view(1,-1))
-        test_loss = crit(predicted.squeeze(), labels.squeeze())
-        plt.title('True label : {} \n Predicted label : {} \n Test loss : {}'.format(labels.squeeze().detach().numpy(),
-                                                                       torch.squeeze(predicted).round().detach().numpy(),
-                                                                                    np.round(test_loss.item(), 2)),
-                  fontsize=6)
+        predicted = model(imgs.view(1, -1))
+        test_loss = crit(predicted, labels)
+        plt.title('True label: {}\nPredicted label: {}\nTest loss: {}'.format(
+            labels.item(),
+            predicted.argmax(1).item(),
+            np.round(test_loss.item(), 2)),
+            fontsize=6)
         ct += 1
+    plt.show()
 
 
-BATCH_SIZE = 200
+BATCH_SIZE = 64
 transform = transforms.Compose([
     transforms.RandomHorizontalFlip(),
     transforms.RandomRotation(10),
-    transforms.RandomResizedCrop(56, scale=(0.8, 1.0)),
+    #transforms.RandomResizedCrop(224, scale=(0.8, 1.0)),
     transforms.Normalize((0.5,), (0.5,))
 ])
 if __name__ == "__main__":
     training_set = CoRDataset("data/training/", transform=transform)
     training_loader = DataLoader(training_set, batch_size=BATCH_SIZE, shuffle=True)
     validation_set = CoRDataset("data/validation/")
-    validation_loader = DataLoader(validation_set, shuffle=False)
+    validation_loader = DataLoader(validation_set, batch_size=BATCH_SIZE, shuffle=True)
     test_set = CoRDataset("data/test/")
     test_loader = DataLoader(test_set, shuffle=False)
     pokemonmodel = torch.nn.Sequential(torch.nn.Linear(56 * 56, 512),
                                        torch.nn.ReLU(),
-                                       torch.nn.Dropout(0.25),
+                                       torch.nn.Dropout(0.6),
                                        torch.nn.Linear(512, 256),
                                        torch.nn.ReLU(),
-                                       torch.nn.Dropout(0.25),
-                                       torch.nn.Linear(256, len(training_set.class_map)),
+                                       torch.nn.Dropout(0.6),
+                                       torch.nn.Linear(256, 151),
                                        )
     criterion = torch.nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(pokemonmodel.parameters(), lr=0.001, weight_decay=10**(-3))
-    Learning(100, pokemonmodel, criterion, optimizer, BATCH_SIZE, training_loader, validation_loader)
+    optimizer = torch.optim.Adam(pokemonmodel.parameters(), lr=0.0005, weight_decay=10**(-6))
+    Learning(50, pokemonmodel, criterion, optimizer, BATCH_SIZE, training_loader, validation_loader)
     Testmodel("best_model.pth", criterion, test_loader)
