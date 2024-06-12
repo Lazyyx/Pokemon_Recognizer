@@ -170,6 +170,10 @@ if __name__ == "__main__":
                                        torch.nn.Dropout(0.6),
                                        torch.nn.Linear(256, 110),
                                        )
+    """writer = SummaryWriter('runs/pokemon_model')
+    dummy_input = torch.zeros((1, 3, 56, 56))  # Taille d'entrée fictive pour l'exemple
+    writer.add_graph(pokemonmodel, dummy_input.view(1, -1))
+    writer.close()"""
     criterion = torch.nn.CrossEntropyLoss()
     initial_model = copy.deepcopy(pokemonmodel)
     for opti in ["SGD", "Adam", "Adagrad"]:
